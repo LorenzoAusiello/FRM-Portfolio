@@ -1,0 +1,227 @@
+---
+title: "LAB 3"
+author: "Lorenzo Ausiello, Stephan Bilyk, Fabrizio Dimino"
+date: "2023-10-08"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, out.width="60%",out.height="60%")
+```
+
+
+```{r setup0, echo=T,include=T}
+library(zoo)
+library(quantmod)
+library(xts)
+getSymbols('SPY', from = '1993-12-31', to = '2022-12-31')
+head(SPY)
+```
+
+
+**DAILY DATA**
+```{r setup1, echo=T}
+#daily returns
+returns_daily <- na.omit(log(SPY$SPY.Adjusted/lag(SPY$SPY.Adjusted)))
+head(returns_daily)
+
+#calibrate
+sigma_hat <- sqrt(252)*sd(returns_daily)
+sigma_hat
+mu_hat <- 252*mean(returns_daily)+sigma_hat^2/2
+mu_hat
+
+#simulations
+s0 <- as.numeric(SPY$SPY.Adjusted[length(SPY$SPY.Adjusted)])
+dt<-1/252
+GBM_t <- function(n){
+  dRt_seq<-rnorm(1/dt,(mu_hat - sigma_hat^2/2)*dt,sigma_hat*sqrt(dt))
+  St<-s0*exp(cumsum(dRt_seq))
+  return(St)
+}
+s_mat<-sapply(1:10^5,GBM_t)
+plot(s_mat[,1], type="l",xlab="Day",ylab="Price",main="Geometric Brownian Motion" )
+
+s1_sim<-s_mat[252,]
+head(s1_sim)
+F_bar<-mean(s1_sim)
+F_bar
+s1_exp<-s0*exp(mu_hat)
+s1_exp
+s1_sig<-sd(s1_sim)
+s1_sig
+
+#VaR
+Qc <- quantile(s1_sim,0.05)
+Qc
+VaR <- F_bar - Qc
+VaR
+
+plot(density(s1_sim),main = "Density Function of Future Price: Mean and Qc" )
+abline(v = F_bar, lty = 2)
+abline(v = Qc, lty = 2, col = 2)
+```
+
+
+**MONTHLY DATA**
+```{r setup2, echo=T}
+
+#monthly returns
+SPY.monthly<-to.monthly(SPY)
+head(SPY.monthly)
+returns_monthly <- na.omit(log(SPY.monthly$SPY.Adjusted/lag(SPY.monthly$SPY.Adjusted)))
+head(returns_monthly)
+
+#calibrate
+sigma_hat <- sqrt(12)*sd(returns_monthly)
+sigma_hat
+mu_hat <- 12*mean(returns_monthly)+sigma_hat^2/2
+mu_hat
+
+#simulations
+s0 <- as.numeric(SPY.monthly$SPY.Adjusted[length(SPY.monthly$SPY.Adjusted)])
+dt<-1/12
+GBM_t <- function(n){
+  dRt_seq<-rnorm(1/dt,(mu_hat - sigma_hat^2/2)*dt,sigma_hat*sqrt(dt))
+  St<-s0*exp(cumsum(dRt_seq))
+  return(St)
+}
+s_mat<-sapply(1:10^5,GBM_t)
+plot(s_mat[,1], type="l",xlab="Month",ylab="Price",main="Geometric Brownian Motion" )
+
+s1_sim<-s_mat[12,]
+head(s1_sim)
+F_bar<-mean(s1_sim)
+F_bar
+s1_exp<-s0*exp(mu_hat)
+s1_exp
+s1_sig<-sd(s1_sim)
+s1_sig
+
+#VaR
+Qc <- quantile(s1_sim,0.05)
+Qc
+VaR <- F_bar - Qc
+VaR
+
+plot(density(s1_sim),main = "Density Function of Future Price: Mean and Qc" )
+abline(v = F_bar, lty = 2)
+abline(v = Qc, lty = 2, col = 2)
+```
+
+
+VaR computed wth monthly data and VaR computed with daily data are different. The explanation is the assumption of independence. In fact, using daily data, we computed sigma hat scaling standard deviation of daily returns (sd * sqrt(252)) with the purpose of generating a GBM. Then, using monthly data, we computed sigma hat scaling standard deviation of monthly returns (sd * sqrt(12)). However, in order to get the same results for the VaR, the values of yearly returns volatility (sigma hat), used to generate the processes, should have been the same. But for variance, the IID assumption ignores potential correlation among daily returns over time. Specifically, looking at daily returns over this period, we note that returns do exhibit serial correlation
+```{r setup33, echo=T}
+cor(returns_daily,lag(returns_daily),use = 'pairwise')
+
+```
+
+
+
+
+**VOLATILITY INCREASE BY 5% (MONTHLY DATA)**
+```{r setup3, echo=T}
+
+#calibrate
+sigma_hat <- sqrt(12)*(sd(returns_monthly)*1.05)
+sigma_hat
+mu_hat <- 12*mean(returns_monthly)+sigma_hat^2/2
+mu_hat
+
+#simulations
+s0 <- as.numeric(SPY.monthly$SPY.Adjusted[length(SPY.monthly$SPY.Adjusted)])
+dt<-1/12
+GBM_t <- function(n){
+  dRt_seq<-rnorm(1/dt,(mu_hat - sigma_hat^2/2)*dt,sigma_hat*sqrt(dt))
+  St<-s0*exp(cumsum(dRt_seq))
+  return(St)
+}
+s_mat<-sapply(1:10^5,GBM_t)
+plot(s_mat[,1], type="l",xlab="Month",ylab="Price",main="Geometric Brownian Motion" )
+
+s1_sim<-s_mat[12,]
+head(s1_sim)
+F_bar<-mean(s1_sim)
+F_bar
+s1_exp<-s0*exp(mu_hat)
+s1_exp
+s1_sig<-sd(s1_sim)
+s1_sig
+
+#VaR
+Qc <- quantile(s1_sim,0.05)
+Qc
+VaR <- F_bar - Qc
+VaR
+
+plot(density(s1_sim),main = "Density Function of Future Price: Mean and Qc" )
+abline(v = F_bar, lty = 2)
+abline(v = Qc, lty = 2, col = 2)
+
+```
+
+
+
+**Is the relationship between one-year VaR(0.05) and the annual volatility linear?**
+VaR depends on the distribution of returns. We assume that Log-returns follow a normal distribution.
+For a normal distribution, the relationship between VaR and volatility is linear because it's based on standard deviations. Higher volatility generally implies a higher VaR.
+Under normal distribution the c quantile of returns Rd is:
+
+Q(Rd , c) = mu + sigma*Zc
+
+and
+
+VaR(Rd , c) = mu - [mu + sigma\*Zc ] = -sigma\*Zc = sigma*Z(1-c) 
+
+Therefore there is a linear relationship between VaR and standard deviation.
+
+But if we assume that Log-returns follow a normal distributions, portfolio values follow a log-normal distribution, and in this case "  Q(Fd , c) = mu + sigma\*Zc  " is not valid, and the relationship between VaR and standard deviation is not linear. Below a graphic representation.
+
+```{r setup4, echo=T}
+#relationship between VaR and standard deviation
+
+Standard_Deviation=c()
+VaR=c()
+for (i in seq(0.03,0.9,0.01)){
+  sd=i
+  sigma_hat <- sqrt(12)*(sd)
+  mu_hat <- 12*mean(returns_monthly)+sigma_hat^2/2
+  s0 <- as.numeric(SPY.monthly$SPY.Adjusted[length(SPY.monthly$SPY.Adjusted)])
+  s1_sim<-s0*exp(mu_hat-sigma_hat^2/2+sigma_hat*rnorm(10^5,0,1))
+  F_bar<-mean(s1_sim)
+  Standard_Deviation<-append(Standard_Deviation,sd)
+  Qc<-quantile(s1_sim,0.05)
+  VaR_value=F_bar - Qc
+  VaR<- append(VaR,VaR_value)
+}
+
+plot(Standard_Deviation,VaR, main="Standard Deviation vs VaR : non-linear relationship")
+
+```
+
+
+**but for log-returns**
+```{r setup5, echo=T}
+#relationship between VaR (in terms of log-returns) and standard deviation
+
+Standard_Deviation=c()
+VaR=c()
+for (i in seq(0.03,0.9,0.01)){
+  sd=i
+  sigma_hat <- sqrt(12)*(sd)
+  mu_hat <- 12*mean(returns_monthly)+sigma_hat^2/2
+  s0 <- as.numeric(SPY.monthly$SPY.Adjusted[length(SPY.monthly$SPY.Adjusted)])
+  r1_sim<-mu_hat-sigma_hat^2/2+sigma_hat*rnorm(10^5,0,1)
+  F_bar<-mean(r1_sim)
+  Standard_Deviation<-append(Standard_Deviation,sd)
+  Qc<-quantile(r1_sim,0.05)
+  VaR_value=F_bar - Qc
+  VaR<- append(VaR,VaR_value)
+}
+
+plot(Standard_Deviation,VaR, main="Standard Deviation vs VaR (log-returns) : linear relationship")
+
+```
