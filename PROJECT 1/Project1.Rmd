@@ -1,0 +1,613 @@
+---
+title: "Project 1"
+author: "Lorenzo Ausiello, Stephan Bilyk, Fabrizio Dimino"
+date: "2023-10-23"
+output:
+  pdf_document:
+    latex_engine: xelatex
+header-includes:
+  - "\\usepackage{setspace}"
+  - "\\onehalfspacing"  # Set line spacing to 1.5
+  - "\\usepackage{fontspec}"
+  - "\\usepackage[margin=1in]{geometry}"  # Set 1-inch margins
+fontsize: 11pt  # Set 11-point font size
+---
+```{r setup, include=FALSE}
+library(knitr)
+library(quantmod)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, out.width="50%",out.height="50%")
+```
+
+**Excercise 1**
+```{r car}
+##Excercise 1
+setwd("C:/Users/loaus/OneDrive - stevens.edu/STEVENS/Intro to Financial Risk Management/Project")
+
+# Creating a function to download ETFs daily prices
+Symbols <- read.csv('FE535_ETF_Final.csv')[,1]
+get_tic_function <- function(x) {
+  getSymbols(x, from = "2010-01-01", to ="2023-09-30",auto.assign = F)
+}
+P_list <- lapply(Symbols, get_tic_function)
+
+# Creating a variable containing only Adjusted Price
+get_adj_price <- function(x) x[,6]
+P_adj_list <- lapply(P_list, get_adj_price)
+
+# Merge all data in a unique dataset
+Prices <- Reduce(merge,P_adj_list)
+knitr::kable(subset(head(Prices),select=c(1,2,29,30)), caption = "ETFs (4 out of 30) Prices from Jan 2010 to Sept 2023")
+
+# Calculating daily log-returns
+R_sub <- na.omit(log(Prices/lag(Prices)))
+colnames(R_sub)<-Symbols
+knitr::kable(subset(head(R_sub),select=c(1,2,29,30)),caption = "ETFs (4 out of 30) Log-Returns from Jan 2010 to Sept 2023")
+
+#Calculating absolute performance summary
+Mean.Return.annualized <- apply(R_sub, 2, function(x)(mean(x)*252))
+Volatility.Annualized <- apply(R_sub, 2, function(x)(sd(x)*sqrt(252)))
+SharpeRatio.Annualized <- Mean.Return.annualized/Volatility.Annualized
+Matrix_RV <- data.frame(Mean.Return.annualized, Volatility.Annualized,SharpeRatio.Annualized)
+
+# Creating a 4 x 3 summary table containing Mean Return, Volatility and Sharpe Ratio
+Summary_table<-sapply(Matrix_RV, FUN= function(x)
+  c( mean(x), quantile(x,.25),quantile(x,.50),quantile(x,.75)))
+rownames(Summary_table)[1]<-'Mean'
+knitr::kable(Summary_table, caption='Summary table: Mean Return, Volatility and Sharpe Ratio')
+
+# Plotting asset mean returns against their volatilities
+library(ggplot2)
+ggplot(Matrix_RV, aes(x =Volatility.Annualized , y = Mean.Return.annualized)) +
+  geom_point() +
+  geom_smooth(method = "lm")+
+  labs(x ="Volatility", y ="Mean Return") +
+  ggtitle("Volatility vs. Mean Return")
+
+#Jensen's Alpha and Market Beta
+Market<-R_sub[,1]
+ETFs<-R_sub[,-1]
+Beta<-sapply(ETFs,FUN=function(x) cov(x,Market)/var(Market))
+Jens.Alpha<-apply(ETFs,2,FUN=function(x) mean(x)*252)-Beta*mean(Market)*252
+
+#Treynor Ratio
+Trey.Ratio<-sapply(ETFs,FUN=function(x) mean(x)*252)/Beta
+
+#Tracking error and Information Ratio
+Track.Err<-sapply(ETFs,FUN=function(x) sqrt(var(x-Market)*252))
+
+Inf.Ratio<-(sapply(ETFs,FUN=function(x) mean(x)*252)-mean(Market)*252) /Track.Err
+
+Matrix_Stat<-data.frame(Beta,Jens.Alpha,Trey.Ratio,Track.Err,Inf.Ratio)
+
+# Creating a 4 x 3 summary table
+Summary_table2<-sapply(Matrix_Stat, FUN= function(x)
+  c( mean(x), quantile(x,.25),quantile(x,.50),quantile(x,.75)))
+rownames(Summary_table2)[1]<-'Mean'
+knitr::kable(Summary_table2, caption="Summary table: Beta, Jensen's Alpha, Trey. Ratio, Track. Error, Inf. Ratio")
+
+#Expense vs Performance
+Expense_Ratio<-read.csv('FE535_ETF_Final.csv')[,'Expense_Ratio']
+names(Expense_Ratio)<-Symbols
+Matrix_Stat$Expense_Ratio<-Expense_Ratio[-1]
+knitr::kable(Matrix_Stat, caption="Statistics matrix (Expense ratio included)")
+ggplot(data=Matrix_Stat,aes(x = Track.Err, y = Expense_Ratio)) +
+  geom_point(color = "red") +
+  labs(x = "Tracking Error", y = "Expense Ratio", title = "Expense Ratio against Tracking Error") +
+  geom_text(aes(label = Symbols[-1]), hjust = 0.5, vjust = -0.5, size = 3) +
+  geom_smooth(method = "lm", se = FALSE,col="red")
+
+# Plotting Annualized Mean Return against Betas
+R_B<-data.frame(Return=Mean.Return.annualized[-1],Beta, CAPM.Return=Mean.Return.annualized[1]*Beta)
+ggplot(data=R_B,aes(x = Beta, y = Return)) +
+  geom_point(color = "red")  +
+  labs(x = "Beta", y = "Annualized Mean Return", title = "Annualized Return against Beta: Real World (red) vs CAPM (blue) ") +
+  geom_text(aes(label = Symbols[-1]), hjust = 0.5, vjust = -0.5, size = 3) +
+  geom_line(data=R_B,aes(x = Beta, y = CAPM.Return),color = "blue", size = 1)
+```
+
+**Question 1.3.b**
+Once computed the 5 different measures for each ETF, we can highlight that IYH has the highest Alpha. This measure show that this ETF has the highest ability to outperform the index. So, IYH is the best ETF if we consider only the excess returns of the funds over their capability to track the index. However, IYK shows the highest Treynor ratio, thanks to its high alpha and low beta. Therefore, IYK is the best if we consider the amount of expected return for unit of systematic risk. On the other side, if we consider excess returns of the funds over the market index, compared to their idiosyncratic risk, we can notice that IYW is the winner, with the highest Information Ratio. This ratio could be a little bit tricky, since funds with very low betas can have a low information ratio even if they show high alphas and low tracking error volatility.
+Then, we can highlight that IYZ has the lowest Alpha. This measure show that this ETF underperform the index by 7.19%. So, IYZ is the worst ETF if we consider only the excess returns of the funds over their capability to track the index. IYZ shows also the lowest Treynor ratio, due to its very negative alpha. And finally, if we consider excess returns of the funds over the market index compared to their idiosyncratic risk, we can notice that IYZ is again the loser, with the most negative Information Ratio. 
+
+**Question 1.3.c**
+The expense ratio is a measure of ETFs operating costs relative to assets. Passive index funds tend to have lower expense ratios than actively-managed funds or those in less liquid asset classes. In this case, we can notice that Expense ratio presents a positive relationship with tracking error volatility. The higher the tracking error volatility, the higher the expense ratio, maybe due to the fact that ETFs showing an higher tracking error are the funds that replicate/track the index less. However, expense ratio present a negative relationship with Alpha, Treynor ratio and Information ratio. This could imply that funds that deviate less from the market index have performed better.
+
+**Question 1.4.b**
+CAPM assumes a perfect linear relationship between Expected returns of funds and funds' betas. CAPM considers alphas equal to 0, but in the real-world CAPM doesn't hold because alphas exist and are not 0.
+However, roughly speaking, assets with higher betas tend to have higher expected mean returns (when expected return of the market is positive), because the higher the beta the more the asset amplify the expected return. However, the linear relationship is not respected because different assets show different alphas. Data points should cluster around a linear trendline.
+
+
+
+
+
+**Exercise 2**
+
+```{r car3}
+##Excercise 2
+Symbols <- c("IVV", "IYW", "IYF")
+R_sub<-R_sub[,Symbols]
+
+Mu_A<-Mean.Return.annualized[Symbols]
+Sig_A<-Volatility.Annualized[Symbols]
+SR_A <- SharpeRatio.Annualized[Symbols]
+result <- data.frame(cbind(Mu_A,Sig_A,SR_A))
+colnames(result) <- c("Mean","Volatility","SR")
+knitr::kable(round(result,3),caption="Main statistics of IVV, IYW, IYF")
+
+Sig_mat <- data.matrix(var(R_sub)*252)
+knitr::kable(Sig_mat,caption="Covariance Matrix")
+
+# function to compute portfolio metrics
+w_function <- function(weights.pfolio) {
+  w_vec <- matrix(weights.pfolio,3,1)
+  mu_p <- t(w_vec)%*%Mu_A
+  sig_p <- sqrt(t(w_vec)%*%Sig_mat%*%w_vec)
+  result <- c(mu_p,sig_p)
+  return(result)
+}
+
+#GMV (w_0), SR portfolios and MVEF
+vec_ones <- rep(1,nrow(Sig_mat))
+
+w_0 <- solve(Sig_mat)%*%vec_ones
+w_0 <- w_0/sum(w_0)
+
+B_mat <- solve(Sig_mat)%*%( diag(vec_ones) - vec_ones%*%t(w_0) )
+w_1 <- B_mat%*%Mu_A
+
+x<-as.numeric(t(vec_ones)%*%solve(Sig_mat)%*%(Mu_A))
+SR_pfolio<-(solve(Sig_mat)%*%(Mu_A))/x
+  
+knitr::kable(data.frame(w_0,w_1,SR_pfolio), caption="Weights of GMV pfolio (w0), w1 and SR pfolio")
+important.metrics<-sapply(data.frame(w_0,w_1,SR_pfolio),w_function)
+important.metrics<-data.frame(important.metrics)
+important.metrics[3,]<-important.metrics[1,]/important.metrics[2,]
+rownames(important.metrics) <- c("mu","sig","SR")
+knitr::kable(important.metrics,caption="Main statistics of GMV pfolio (w0), w1 and SR pfolio")
+
+# def function to compute the optimal portfolios (MVEF) metrics 
+w_A_function <- function(A) {
+  w_vec <- w_0 + (1/A)*w_1
+  mu_p <- t(w_vec)%*%Mu_A
+  sig_p <- sqrt(t(w_vec)%*%Sig_mat%*%w_vec)
+  result <- c(mu_p,sig_p)
+  return(result)
+}
+
+#define a sequence of 1000 risk aversion parameters
+mu_0<-t(w_0)%*%Mu_A
+mu_0<-as.numeric(mu_0)
+m<-seq(mu_0,2*max(Mu_A),length.out = 1000)
+A_seq <-(m-t(w_0)%*%Mu_A)/(t(w_1)%*%Mu_A)
+A_seq<-1/A_seq
+
+# compute optimal portfolios (MVEF) metrics
+ds_A <- t(sapply(A_seq,w_A_function))
+ds_A <- data.frame(ds_A)
+names(ds_A) <- c("mu_p","sig_p")
+ds_A$SR <- (ds_A$mu_p)/ds_A$sig_p
+
+#plot optimal portfolios metrics (MVEF) and highlight GMV and SR portoflios
+plot(mu_p ~ sig_p,data = ds_A,
+     type = "l", ylab = expression(mu[p]),
+     xlab = expression(sigma[p]),
+     xlim = range(ds_A$sig_p),
+     ylim = range(ds_A$mu_p), main = "MVEF. Points: GMV and SR portoflios")
+points(mu_p~sig_p,data = ds_A[which(ds_A$sig_p == important.metrics['sig','w_0']),],
+       col = 1,pch = 20,cex = 1.5)
+points(mu_p~sig_p,data = ds_A[which.max(ds_A$SR),],
+       col = 1,pch = 20,cex = 1.5)
+grid(10)
+
+# convex combination of the two funds to derive MVEF
+lambda<-seq(-1,1,by=0.001)
+w_weight<-matrix(NA,2001,3)
+for (i in lambda){
+w_weight[which(lambda==i),]<-i*w_0+(1-i)*SR_pfolio
+}
+
+metrics_MVEF<-apply(w_weight, 1, w_function)
+rownames(metrics_MVEF) <- c("mu_p","sig_p")
+metrics_MVEF<-t(metrics_MVEF)
+metrics_MVEF<-data.frame(metrics_MVEF)
+
+plot(mu_p ~ sig_p,data = ds_A,
+     type = "l", ylab = expression(mu[p]),
+     xlab = expression(sigma[p]),
+     xlim = range(ds_A$sig_p),
+     ylim = range(ds_A$mu_p), main="Yellow-dashed line: Convex combination of GMV and SR Portfolios")
+points(mu_p~sig_p,data = ds_A[which(ds_A$sig_p == important.metrics['sig','w_0']),],
+       col = 1,pch = 20,cex = 1.5)
+points(mu_p~sig_p,data = ds_A[which.max(ds_A$SR),],
+       col = 1,pch = 20,cex = 1.5)
+grid(10)
+lines(mu_p ~ sig_p,data = metrics_MVEF,col = 'yellow',lty = 2,lwd = 2)
+
+# a world with a risk free asset with return equal to 0%
+lambda<-seq(-1,1,by=0.001)
+w_weight<-matrix(NA,2001,3)
+for (i in lambda){
+  w_weight[which(lambda==i),]<-(1-i)*SR_pfolio
+}
+
+metrics_MVEF<-apply(w_weight, 1, w_function)
+rownames(metrics_MVEF) <- c("mu_p","sig_p")
+metrics_MVEF<-t(metrics_MVEF)
+metrics_MVEF<-data.frame(metrics_MVEF)
+
+plot(mu_p ~ sig_p,data = ds_A,
+     type = "l", ylab = expression(mu[p]),
+     xlab = expression(sigma[p]),
+     xlim = range(ds_A$sig_p),
+     ylim = range(ds_A$mu_p), main="Blue-dashed line: Convex combination of Risk Free and SR Portfolio")
+points(mu_p~sig_p,data = ds_A[which(ds_A$sig_p == important.metrics['sig','w_0']),],
+       col = 1,pch = 20,cex = 1.5)
+points(mu_p~sig_p,data = ds_A[which.max(ds_A$SR),],
+       col = 1,pch = 20,cex = 1.5)
+grid(10)
+lines(mu_p ~ sig_p,data = metrics_MVEF,col = 'blue',lty = 2,lwd = 2)
+
+plot(mu_p ~ sig_p,data = ds_A,
+     type = "l", ylab = expression(mu[p]),
+     xlab = expression(sigma[p]),
+     xlim = c(0,max(ds_A$sig_p)),
+     ylim = c(0,max(ds_A$mu_p)))
+points(mu_p~sig_p,data = ds_A[which(ds_A$sig_p == important.metrics['sig','w_0']),],
+       col = 1,pch = 20,cex = 1.5)
+points(mu_p~sig_p,data = ds_A[which.max(ds_A$SR),],
+       col = 1,pch = 20,cex = 1.5)
+grid(10)
+lines(mu_p ~ sig_p,data = metrics_MVEF,col = 'blue',lty = 2,lwd = 2)
+
+#regress the portfolio mean returns on the portfolio volatility
+model<-lm(mu_p ~ sig_p,metrics_MVEF)
+summary(model)
+knitr::kable(important.metrics['SR','SR_pfolio'], caption = "Sharpe Ratio of SR Porfolio (equal to the slope of the regression above)")
+
+# MVEF numerically
+# Creating a set of 200 portfolios
+values <- seq(-2.5, 2.5, by = 0.02)
+
+# Creating 20 thousands possible combinations of weights
+valid_combinations <- list()
+for (i in 1:length(values)) {
+  for (j in 1:length(values)) {
+    for (k in 1:length(values)) {
+      weight_vector <- c(values[i], values[j], values[k])
+      if (sum(weight_vector) == 1) {
+        valid_combinations <- c(valid_combinations, list(weight_vector))
+      }
+    }
+  }
+}
+df <- as.matrix(do.call(rbind, valid_combinations))
+
+# compute their mean returns and volatilities
+results <- apply(df, 1, w_function)
+rownames(results) <- c("mu_p","sig_p")
+results<-as.matrix(results)
+results<-t(results)
+results<-data.frame(results)
+
+#plot the cloud
+plot(mu_p ~ sig_p,data = results,
+     type = "p", ylab = expression(mu[p]),
+     xlab = expression(sigma[p]),
+     xlim = range(results$sig_p),
+     ylim = range(results$mu_p), main="Cloud of 100 possible portfolios")
+
+# get the MVEF
+result_df <- data.frame()
+unique_values <- unique(round(results$mu_p,3))
+
+for (value in unique_values) {
+  subset_df <- results[round(results$mu_p,3) == value, ]
+  min_value <- round(min(subset_df$sig_p),3)
+  result_df <- rbind(result_df, subset_df[round(subset_df$sig_p,3) == min_value, ])
+}
+
+plot(mu_p ~ sig_p,data = result_df,
+     type = "p", ylab = expression(mu[p]),
+     xlab = expression(sigma[p]),
+     xlim = range(result_df$sig_p),
+     ylim = range(result_df$mu_p), main="Minimizing sigma for a given level of expected return (mu)")
+grid(10)
+
+result_df2 <- data.frame()
+unique_values <- unique(round(result_df$sig_p,2))
+
+for (value in unique_values) {
+  subset_df <- result_df[round(result_df$sig_p,2) == value, ]
+  max_value <- round(max(subset_df$mu_p),2)
+  result_df2 <- rbind(result_df2, subset_df[round(subset_df$mu_p,2) == max_value, ])
+}
+
+plot(mu_p ~ sig_p,data = result_df2,
+     type = "p", ylab = expression(mu[p]),
+     xlab = expression(sigma[p]),
+     xlim = range(result_df$sig_p),
+     ylim = range(result_df$mu_p),main="MVEF numerically")
+grid(10)
+
+#combine results from analitical and numerical solutions
+plot(mu_p ~ sig_p,data = ds_A,
+     type = "l", ylab = expression(mu[p]),
+     xlab = expression(sigma[p]),
+     xlim = range(ds_A$sig_p),
+     ylim = range(ds_A$mu_p), main="MVEF numerically (points) vs  MVEF from Solution 1 (line)")
+lines(mu_p ~ sig_p,data = result_df2, type = "p")
+```
+
+
+**Question 2.3.b**
+When λ is between -1 and 0, it implies a short position in the GMV portfolio (w0) and a long position in the Sharpe Portfolio (wSR). This would mean that you are borrowing funds in the GMV portfolio and investing them in the Sharpe Portfolio.
+The negative λ values represent leveraging your investments, which can amplify both potential gains and potential losses. Moreover, negative λ values (leverage) imply increasing risk: the resulting portfolio will show higher expected return but also higher volatility respect to SR portfolio (that is riskier than GMV by definition).
+
+**Question 2.4.c**
+The straight line of the graph is called the capital allocation line (CAL). It show all the risk–return combinations available mixing the Risk Free asset (0% volatility and 0% expected return) and the Sharpe Ratio Portfolio (risky asset).
+If we regress mean returns on volatility using all the feasible combinations (complete portfolios from now on), the *Slope* represents the increase in the mean return of the complete portfolio per unit of additional standard deviation. For this reason, the slope is equal to the Sharpe ratio of the Sharpe ratio portfolio: when volatility of complete portfolio (independent variable) will be equal to volatility of SR portfolio, the mean return will be equal to the mean return of the SR portfolio. The *intercept* is equal to the mean return of the Risk Free (0%), that is the mean return of the complete portfolio when volatility is equal to 0% (so, when allocation in SR portfolio is 0 and allocation in Risk Free is 1). 
+
+
+
+
+
+**Excercise 3**
+
+**Breaking Even**
+```{r car4}
+##Excercise 3
+
+# Breaking Even
+simulate_game <- function(n) {
+  options <- c("head", "tail")
+  consecutive_heads <- 0
+  tosses <- 0
+  while (consecutive_heads < 3) {
+    tosses <- tosses + 1
+    if (sample(options, size = 1,prob=c(0.5,0.5))=="tail") {
+      consecutive_heads <- 0
+    } else {
+      consecutive_heads <- consecutive_heads + 1
+    }
+  }
+  return(tosses)
+}
+
+tosses<-sapply(1:10^5,simulate_game)
+
+tosses_exp<-mean(tosses)
+knitr::kable(tosses_exp, caption = "Expected number of tosses to get 3 heads in a row")
+k<-1/mean(tosses)
+knitr::kable(k, caption = "$k to play a fair game ( E[PNL] = 0)")
+```
+
+**Turtles**
+```{r car446}
+
+#Turtles
+turtle_experiment <- function(n) {
+  turtles <- sample(1:num_turtles)  
+  groups<-unique(cummin(turtles))
+  return(length(groups))}
+
+num_turtles<-10
+num_groups<-sapply(1:10^5,turtle_experiment)
+knitr::kable(mean(num_groups), caption = "Expected number of groups. Number of turtles = 10")
+```
+
+**Trees**
+```{r car449}
+#Trees
+#True values 2 steps
+P2<-c(120,100,80)
+prob<-c(0.55*0.55,0.45*0.55*2,0.45*0.45)
+Exp_P2<-sum(P2*prob)
+Var_P2<-sum((P2-Exp_P2)^2*prob)
+knitr::kable(c('Exp_P2'=Exp_P2,'Var_P2'=Var_P2), caption = "True values 2 steps")
+
+#Simulated values 2 steps
+simulated_p2 <- function(n){
+  s <- 100
+  for (i in 1:2){
+  st<-sample(c(s+10,s-10), size=1,prob=c(0.55,0.45))
+  s<-st}
+  return(st)
+}
+
+simulated_p2<-sapply(1:10^5,simulated_p2)
+knitr::kable(c('Exp_P2'=mean(simulated_p2),'Var_P2'=var(simulated_p2)),caption = "Simulated values 2 steps")
+
+#Simulated values 10 steps
+simulated_p10 <- function(n){
+  s <- 100
+  for (i in 1:10){
+    st<-sample(c(s+10,s-10), size=1,prob=c(0.55,0.45))
+    s<-st}
+  return(st)
+}
+
+simulated_p10<-sapply(1:10^5,simulated_p10)
+knitr::kable(c('Exp_P10'=mean(simulated_p10),'Var_P10'=var(simulated_p10)),caption = "Simulated values 10 steps")
+
+```
+
+**Breaking Even**
+The game consists in a fair coin that is repeatedly tossed. You win a $1 when you get three heads in a row for the first time. However, you have to pay k for each toss. 
+In this task, we will use a Monte Carlo simulation to determine the maximum price (k) you would be willing to pay per coin toss that makes the game break even.
+To find the value of k that makes the game break even, you need to determine the expected value of the profit and loss (PNL), which should be equal to zero.
+Therefore, we will simulate the game 10^5 times, by repeatedly tossing a fair coin until three heads in a row are achieved. For each game, we will calculate the number of tosses needed to get three heads in a row. Once obtained 10^5 simulations, we perform the mean of the number of tosses needed in each experiment to find the expected number of tosses needed to get three heads in a row. We will use this value to find the value of k that results in a break-even game: E[PNL] = $1 − E[X] × $k = 0. So, k should be equal to 1/E[X] to have a fair game. 
+
+*Code explained*: the function called simulate_game takes one argument n. This argument n represents the number of times you want to simulate the game. In the function we create a vector named options containing two elements: "head" and "tail". These represent the possible outcomes of a fair coin toss. Then, we start a while loop, that continues as long as the consecutive_heads variable is less than 3, which means it will keep looping until you get three consecutive "head" outcomes. In each iteration of the loop, the tosses variable is incremented by 1, representing the current toss number. We use the sample function to simulate a fair coin toss. It randomly selects one element from the options vector with equal probability (0.5 for "head" and 0.5 for "tail"). If the result is "tail," it enters the if block. If the outcome of the coin toss is "tail," it sets consecutive_heads back to 0 because the consecutive streak of "head" outcomes is broken.  If the outcome of the coin toss is "head," the code enters the else block.  In this case, it increments the consecutive_heads variable by 1, representing a consecutive "head" outcome. his closing brace ends the while loop. The loop continues until you achieve three consecutive "head" outcomes in a row. Finally, this line returns the total number of coin tosses it took to achieve three consecutive "head" outcomes. We set n=10^5 and then we compute the mean of the resulting vector to get E[X] and then k=1/E[X].
+
+
+**Turtles**
+In this game, we have n turtles crawling in the same direction in a one way street. Their initial velocity is different (from 1 to n cm/s), and the initial position is completely random.
+We will simulate 10^5 experiments (in each experiment turtles have different velocities and positions) to determine how many groups the turtles will divide into after enough time. The logic is the following: if the front turtle is slower than the rear turtle, the latter will slow down until it reaches the velocity of the front one. The two turtle will form the group. Then, if the third turtle presents an higher velocity than the first one, it will join the group, otherwise it will form another different group. An so on for each of the n turtles.
+To find the expected number of groups formed by the turtles (given a certain number n of turles partecipating), we will create multiple experiments. In each experiment, we will simulate the movement of the turtles with different initial velocities and positions. We will keep track of how the turtles form groups and calculate the average number of groups formed in the different experiments.
+
+*Code Explained*: We define a function named turtle_experiment that takes one argument, n, which represents the number of turtles in the experiment. Inside the function, it generates a random sample of integers representing the turtles (remember different postions and different velocities: value is the velocity and index is the position).
+The line groups <- unique(cummin(turtles)) calculates the unique cumulative minimum of the turtles vector. The cummin function computes the cumulative minimum, meaning it keeps track of the minimum value encountered as it moves through the vector. The unique function then extracts the unique values, which represent the unique groups of turtles formed as the cumulative minimum changes. In other words, it identifies how many groups of turtles were formed over time.
+The function returns the length of the groups vector, which indicates the number of unique groups formed during the experiment. This represents the final result of the simulation. Then we uses sapply to apply the turtle_experiment function to simulate the experiment 100,000 times. It records the number of unique groups formed in each simulation run and stores these values in the num_groups vector. Finally, we calculate the mean (average) of the num_groups vector. This represents the expected number of unique groups formed over a large number of simulations, providing insight into how the turtles tend to organize themselves into groups on average.
+
+**Trees**
+In this task, we will work with a binomial model to simulate the price process and estimate the expected value and variance at a specific step.
+First of all we create a vector P2 containing 3 possible values for a variable and then we create a vector prob with probabilities corresponding to each value in P2.
+Therefore, we calculate the expected (mean) value by summing the product of each value in P2 and its corresponding probability.
+The variance is computed by summing the squared differences between each value in P2 and the expected value, weighted by their probabilities. These are the true values for variance and mean.
+
+Simulated_p2 is a function that simulates 2 steps of a random process. It starts with an initial value s = 100. It then simulates two steps where s1 is randomly selected from s + 10 with a 55% probability or s - 10 with a 45% probability, and s2 is randomly selected from s1 + 10 with a 55% probability or s1 - 10 with a 45% probability.
+Then we simulate this process 100,000 times, resulting in a vector of simulated values.
+Fianlly, we calculate and display the mean and variance of the simulated values in a table.
+Similar to the previous section, we simulate 10 steps instead of 2 using the simulated_p10 function.
+Then we simulates the 10-step process 100,000 times and calculates the mean and variance of the simulated values.
+The code essentially compares the expected and variance values for a true 2-step process with the values obtained through simulation for both 2 and 10-step processes. It uses random sampling to simulate the process and then computes statistics based on those simulations.
+
+
+
+
+
+**Excercise 4** 
+
+``` {r car5}
+##Excercise 4
+
+#obtaining monthly log-returns
+getSymbols('IVV',from = "2010-01-01", to ="2023-09-30")
+IVV<-to.monthly(IVV)
+s0<-IVV$IVV.Adjusted[[1]]
+IVV$log.returns<-log(IVV$IVV.Adjusted/lag(IVV$IVV.Adjusted))
+IVV<-na.omit(IVV)
+
+# calibrate mu and sigma hat
+sigma_hat<-sd(IVV$log.returns)*sqrt(12)
+mu_hat<- mean(IVV$log.returns)*12+sigma_hat^2/2
+calibr_values<-data.frame(mu_hat,sigma_hat)
+knitr::kable(calibr_values, caption = "Calibrated Values: mu hat and sigma hat")
+
+# 1000 MC simulation for price path
+dt<-1/12
+GBM_t <- function(n){
+  dRt_seq<-rnorm(164,(mu_hat - sigma_hat^2/2)*dt,sigma_hat*sqrt(dt))
+  St<-s0*exp(cumsum(dRt_seq))
+  return(St)
+}
+s_mat<-sapply(1:10^3,GBM_t)
+s_mat<-rbind(rep(s0,1000), s_mat)
+
+#plot 1 simulated price path
+plot(s_mat[,1], type="l",xlab="Month",ylab="Price",main="Geometric Brownian Motion: 1 out of 1000 simulated price path" )
+
+#comparing simulated expectation and true values
+s165_sim<-s_mat[165,]
+s165.exp.sim<-mean(s165_sim)
+knitr::kable(s165.exp.sim, caption="Simulated Expectation of S(t) after 164 month")
+s165_exp<-s0*exp(mu_hat*164/12)
+knitr::kable(s165_exp, caption="True Value: Expectation of S(t) after 164 month")
+s165.sig.sim<-sd(s165_sim)
+knitr::kable(s165.sig.sim, caption="Simulated Variance of S(t) after 164 month")
+s165_sig<-sqrt((exp(sigma_hat^2*164/12)-1)*s0^2*exp(2*mu_hat*164/12))
+knitr::kable(s165_sig, caption="True value: Variance of S(t) after 164 month")
+
+sim_vs_true<-data.frame(Mean=c(s165.exp.sim,s165_exp),Sigma=c(s165.sig.sim,s165_sig))
+rownames(sim_vs_true)=c('Simulation', 'True Value')
+knitr::kable(sim_vs_true, caption="True values vs Simulated Values")
+
+# simulated path most similar to the true one
+IVV.true<-append(s0,as.vector(IVV$IVV.Adjusted))
+IVV.true<-unlist(IVV.true)
+
+second_norm<-function(p){
+  second_norm<-c()
+  for (i in 1:1000){
+      second_norm<- c(second_norm, sum((s_mat[,i]-IVV.true)^p)^(1/p))
+    }
+  second_norm<-matrix(second_norm,nrow=1000)  
+  second_norm<-data.frame(second_norm)
+  return(second_norm)
+}
+second_norm_2<-second_norm(p=2)
+
+a<-sort(unlist(second_norm_2))[1]
+i<-as.numeric(gsub('[A-z]',"",names(a)))
+sim_path<-xts(s_mat[,i],order.by=seq.Date(from = as.Date("2010-01-01"), to = as.Date("2023-09-30"), by = "months"))
+true_path<-xts(IVV.true,order.by=seq.Date(from = as.Date("2010-01-01"), to = as.Date("2023-09-30"), by = "months"))
+
+plot(sim_path, type="l",main="Price Path: True (blue) vs Most Similar Simulated (red)", pch=1, col = 'red')
+lines(true_path, pch=2, col = 'blue')
+
+
+#VaR based on sim path: pfolio of 100 IVV ETFs 
+Qc <- quantile(s165_sim*100,0.01)
+VaR <- mean(s165_sim)*100- Qc
+knitr::kable(VaR, caption = "99% Pfolio position VaR based on Simulated path: 100 IVV ETFs ")
+
+#VaR as function of sigma hat
+mu_hat<- mean(IVV$log.returns)*12+sigma_hat^2/2
+Standard_deviation<-c()
+VaR<-c()
+for (i in seq(0.10,0.5,0.01)){
+  sigma_hat <- i
+  s_mat1<-sapply(1:10^5,GBM_t)
+  s165_sim1<-s_mat1[164,]
+  F_bar<-mean(s165_sim1)
+  Standard_deviation<-append(Standard_deviation,sigma_hat)
+  Qc<-quantile(s165_sim1,0.01)
+  VaR_value=F_bar - Qc
+  VaR<- append(VaR,VaR_value)
+}
+
+plot(Standard_deviation,VaR, xlab = "Sigma hat",main="99% Pfolio position VaR as function of Sigma Hat (mu hat constant)")
+
+#VaR of pfolio return: historical approach
+Qc_hist <- quantile(IVV$log.returns,0.01)
+VaR_hist <- mean(IVV$log.returns)- Qc_hist
+knitr::kable(VaR_hist, caption = "99% Returns VaR: historical approach")
+
+#VaR of pfolio return: parametric approach
+s_ret<-matrix(NA,nrow=164,ncol=1000)
+for (i in 1:1000){
+  for (j in 2:165){
+  s_ret[j-1,i]<-log(s_mat[j,i]/s_mat[j-1,i])}}
+
+Qc_par <- quantile(s_ret,0.01)
+VaR_par <- mean(s_ret)- Qc_par
+knitr::kable(VaR_par, caption = "99% Returns VaR: parametric approach")
+sigma_hat<-sd(IVV$log.returns)*sqrt(12)
+knitr::kable(-qnorm(0.01)*sigma_hat*sqrt(1/12), caption = "99% Returns VaR: true value")
+
+plot(density(IVV$log.returns),col='red',
+     main='Density: sim returns (blue) vs hist returns(red)')
+lines(density(s_ret),col='blue')
+```
+
+
+
+**Bonus Question 2**
+``` {r car5456}
+#VaR portfolio position based on closed form solution: pfolio of 100 IVV ETFs 
+Qc<-(s0*100)*exp((mu_hat-sigma_hat^2/2)*164/12+qnorm(0.01)*sigma_hat*sqrt(164/12))
+s165_exp<-(s0*100)*exp(mu_hat*164/12)
+VaR<-s165_exp-Qc
+knitr::kable(VaR, caption = "99% pfolio position VaR from closed form solutionh: 100 IVV ETFs ")
+
+#VaR portfolio position based on sim path: pfolio of 100 IVV ETFs 
+Qc <- quantile(s165_sim*100,0.01)
+VaR <- mean(s165_sim)*100- Qc
+knitr::kable(VaR, caption = "99% Pfolio position VaR based on Simulated path: 100 IVV ETFs ")
+```
+
+**Question 4.e.ii**
+The graph that shows 99% VaR as funcion of σ demonstrates that VaR is very sensitive to the accuracy of calibrated parameters. An incorrect choice of calibrated σ could lead to incorrect assessments of portfolio risk. In fact, different parameters estimation involves a completely different consideration of the value that the pfolio will present in extremely negative cases, that is “wrong”. Therefore, inaccurate parameters lead to a sub-optimal risk management. This is typically called *Model Risk*, a risk that can be evaluated and mitigated using stress testing and back-testing. If VaR is extremely sensitive to changes in model parameters, this indicates the need for accurate calibration and the most appropriate model to manage risk effectively.
+
+**Question 4.e.iii**
+If we look at the shape of the function (VaR as a function of sigma) we can notice that the relationship between VaR of the portfolio position and its volatility (sigma) is nonlinear. Particularly, the VaR does not increase linearly, but in a decreasing way, with increasingly slower growth as sigma increases. This is due to the fact that the returns are normally distributed, and therefore portfolio position is lognormally distributed. As proof, the VaR will be function of sigma as follows: vd formula *Bonus question 2*. So, keeping mu hat constant, we will have VaR equal to a constant minus esponential of the negative sigma, that assumes the shape in the plot above.
+This form is in contrast to the case of a Gaussian IID (Independent and Identically Distributed) process in which VaR grows linearly with volatility. In the case of a Gaussian IID process, VaR is proportional to standard deviation and follows a linear relationship. Particularly, in this case we have VaR = -Z*sigma.
+
+**Question 4.f.iii**
+We can observe that 99% VaR of the portfolio return computed with Historical and Parametric approach are different. In fact, VaR Historical is the VaR computed considering only one realization of the price path (and therefore returns). So, considering only 165 realizations of the monthly returns (that are normally distributed with mu and sigma parameters), the VaR could be different from the expected one. The VaR Parametric, instead, is computed considering 165000 realizations (1000 price path) of returns drawn from the same normal distribution with the same parameters than before. However, the sample is very large in this case and VaR will be very close to -Z*sigma.
+
+**Question 4.f.iv**
+We can observe that the density functions of historical returns and simulated returns have different shapes. The density function of simulated returns is very very close to a normal distribution with mu and sigma as parameters (we are considering 165000 realizations drawn from that distribution), The historical distribution presents the same mu and the same sigma (parameters used as inputs to compute calibrated values) but the distribution is slightly different, with a fatter tail on the left side (therefore VaR will be higher).
+
+**Question 4.f.v**
+Using two different approaches (historical and parametric) to calculate VaR provides a more comprehensive perspective on risk management. The parametric VaR may underestimate the risk compared to historical VaR, but it is essential to evaluate the trade-offs between the two methods, including data sensitivity and underlying assumptions. The model's ability to replicate the distribution of observed returns is a crucial indicator of its effectiveness. In general, this exercise highlights the importance of understanding the limitations and implications of VaR calculation methods and the significance of proper model calibration. Different approaches can yield varying results, and considering multiple perspectives can help mitigate model risk.The discrepancy between historical and parametric VaR emphasizes the sensitivity of risk models to their underlying assumptions. Understanding and critically evaluating these assumptions is crucial for robust risk management.
