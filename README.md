@@ -1,7 +1,9 @@
 ### LAB 3
 
 Geometric Brownian Motion (and parameter calibration)
+
 Monte Carlo Simulations
+
 Value at Risk (and sensitivity to parameters)
 
 ### LAB 4
