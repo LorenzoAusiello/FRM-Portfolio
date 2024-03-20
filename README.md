@@ -36,7 +36,7 @@ Managing Linear Risk (VaR for the Unhedged, Unitary Hedge, Hedging using ETFs)
 
 Option Pricing using Monte Carlo
 
-Variance Reduction Approach (Antithwtic Variates)
+Variance Reduction Approach (Antithetic Variates)
 
 Stochastic Interest Rate Models (Vasicek)
 
